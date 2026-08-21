@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.1",
+  "note": "cross-candidate比較(test profile vs release profile)で許容するvolatile差分。全て実機2-build比較で実証済み。列挙外の差分は拒否する。",
+  "profileSpecificParts": [
+    {
+      "part": "xl/vbaProject.bin",
+      "reason": "#Const TEST_BUILD directiveの値と、それによりcompileされるprocedure集合が異なるため、compiled VBA payload自体が異なる。embedded canonical source hash(directive除去後)とentrypoint inventoryの整合性で同値性を別途確認する。"
+    }
+  ],
+  "volatileXPaths": [
+    {
+      "part": "docProps/core.xml",
+      "xpath": "/cp:coreProperties/dcterms:created",
+      "reason": "Excel保存時刻。2-build fixtureで毎回変化することを実証済み。"
+    },
+    {
+      "part": "docProps/core.xml",
+      "xpath": "/cp:coreProperties/dcterms:modified",
+      "reason": "Excel保存時刻。2-build fixtureで毎回変化することを実証済み。"
+    },
+    {
+      "part": "xl/workbook.xml",
+      "xpath": "/workbook/fileVersion/@codeName",
+      "reason": "Excelが保存のたびに生成するランダムGUID（co-authoring関連）。2-build fixtureで実証済み。"
+    },
+    {
+      "part": "xl/workbook.xml",
+      "xpath": "/workbook/xr:revisionPtr/@documentId",
+      "reason": "Excel revision-tracking機能が生成するランダムGUID。2-build fixtureで実証済み。"
+    },
+    {
+      "part": "xl/workbook.xml",
+      "xpath": "/workbook/bookViews/workbookView/@xr2:uid",
+      "reason": "Excel revision-tracking機能が生成するランダムGUID。2-build fixtureで実証済み。"
+    },
+    {
+      "part": "xl/worksheets/sheet1.xml",
+      "xpath": "/worksheet/@xr:uid",
+      "reason": "Excel revision-tracking機能が生成するランダムGUID（シート単位）。2-build fixtureで実証済み。"
+    },
+    {
+      "part": "xl/worksheets/sheet2.xml",
+      "xpath": "/worksheet/@xr:uid",
+      "reason": "Excel revision-tracking機能が生成するランダムGUID（シート単位）。2-build fixtureで実証済み。"
+    },
+    {
+      "part": "xl/worksheets/sheet3.xml",
+      "xpath": "/worksheet/@xr:uid",
+      "reason": "Excel revision-tracking機能が生成するランダムGUID（シート単位）。2-build fixtureで実証済み。"
+    },
+    {
+      "part": "xl/worksheets/sheet4.xml",
+      "xpath": "/worksheet/@xr:uid",
+      "reason": "Excel revision-tracking機能が生成するランダムGUID（シート単位）。2-build fixtureで実証済み。"
+    },
+    {
+      "part": "xl/drawings/drawing1.xml",
+      "xpath": "//a16:creationId/@id",
+      "reason": "Excelが図形(shape)ごとに保存時に生成するランダムGUID（Microsoft拡張、Office 2014+ drawing schema）。2-build fixtureで実証済み。要素名で名前空間限定した属性のみを対象とし、part全体やワイルドカード除外ではない。"
+    },
+    {
+      "part": "xl/drawings/drawing2.xml",
+      "xpath": "//a16:creationId/@id",
+      "reason": "Excelが図形(shape)ごとに保存時に生成するランダムGUID（Microsoft拡張、Office 2014+ drawing schema）。2-build fixtureで実証済み。要素名で名前空間限定した属性のみを対象とし、part全体やワイルドカード除外ではない。"
+    }
+  ],
+  "removedByBuilder": [
+    {
+      "part": "xl/workbook.xml",
+      "xpath": "/workbook/mc:AlternateContent[mc:Choice/x15ac:absPath]",
+      "reason": "Excelが保存時に埋め込む、ビルドを実行したマシンの絶対フォルダパス（x15ac:absPath）。builderのRemove-AbsPathMetadataが両profileのビルド直後に除去するため、test/release双方に存在しない。存在した場合はbundle生成を拒否する。"
+    }
+  ]
+}

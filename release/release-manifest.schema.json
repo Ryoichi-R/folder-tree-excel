@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ryoichi-R/folder-tree-excel/release/release-manifest.schema.json",
+  "title": "folder-tree-excel release manifest",
+  "type": "object",
+  "required": [
+    "schemaVersion", "generatedAtUtc", "version", "displayVersion", "signing",
+    "asset", "sourceHashes", "builderSha256", "testCandidate", "releaseCandidate",
+    "releaseSafetySubset", "knownLimitations"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAtUtc": { "type": "string", "format": "date-time" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "displayVersion": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+    "signing": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["unsigned", "signed"] },
+        "certificateSubject": { "type": "string" },
+        "certificateIssuer": { "type": "string" },
+        "certificateThumbprint": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "required": ["fileName", "sha256", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "fileName": { "type": "string", "pattern": "^folder-tree-excel-v\\d+\\.\\d+\\.\\d+\\.xlsm$" },
+        "sha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "sourceHashes": {
+      "type": "object",
+      "required": ["modFolderTree.bas", "modOperationPlan.bas", "modFileOperations.bas", "modRecycleBin.bas", "modWorkbookIo.bas"],
+      "additionalProperties": false,
+      "properties": {
+        "modFolderTree.bas": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "modOperationPlan.bas": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "modFileOperations.bas": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "modRecycleBin.bas": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "modWorkbookIo.bas": { "type": "string", "pattern": "^[0-9A-F]{64}$" }
+      }
+    },
+    "builderSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+    "testCandidate": {
+      "type": "object",
+      "required": ["candidateSha256", "buildReceiptSha256", "gateReceiptSha256", "requiredCasesPassed"],
+      "additionalProperties": false,
+      "properties": {
+        "candidateSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "buildReceiptSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "gateReceiptSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "requiredCasesPassed": { "const": 68 }
+      }
+    },
+    "releaseCandidate": {
+      "type": "object",
+      "required": ["candidateSha256", "buildReceiptSha256", "entrypointGatePassed", "offlinePackagePassed"],
+      "additionalProperties": false,
+      "properties": {
+        "candidateSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "buildReceiptSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" },
+        "entrypointGatePassed": { "type": "boolean" },
+        "offlinePackagePassed": { "type": "boolean" }
+      }
+    },
+    "releaseSafetySubset": {
+      "type": "object",
+      "required": ["status", "checks"],
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["skipped-by-flag", "pass", "fail"] },
+        "checks": {
+          "type": "object",
+          "required": ["rootBoundary", "reparseBoundary", "collision", "recycleBinUnavailableFallback"],
+          "additionalProperties": false,
+          "properties": {
+            "rootBoundary": { "enum": ["pass", "fail", "not-run"] },
+            "reparseBoundary": { "enum": ["pass", "fail", "not-run"] },
+            "collision": { "enum": ["pass", "fail", "not-run"] },
+            "recycleBinUnavailableFallback": {
+              "description": "OD-11 (2026-08-20) により、Recycle Bin無効化を伴う動的fallback検証は実施しない。この項目はrelease safety subsetのdynamic checkに含まれず、modRecycleBin.bas の NoRecycleFiles / NukeOnDelete ガード節の静的source reviewと、embedded VBAがcanonical sourceへhash一致することの確認だけに依拠する。",
+              "enum": ["static-source-review-only"]
+            }
+          }
+        },
+        "receiptSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" }
+      }
+    },
+    "knownLimitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["summary", "waiverReceiptSha256"],
+        "additionalProperties": false,
+        "properties": {
+          "summary": { "type": "string", "minLength": 1 },
+          "waiverReceiptSha256": { "type": "string", "pattern": "^[0-9A-F]{64}$" }
+        }
+      }
+    }
+  }
+}

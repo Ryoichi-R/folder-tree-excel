@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUtc": "2026-08-20T00:00:00Z",
+  "version": "1.1.1",
+  "displayVersion": "v1.1.1",
+  "signing": {
+    "status": "unsigned"
+  },
+  "asset": {
+    "fileName": "folder-tree-excel-v1.1.1.xlsm",
+    "sha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "bytes": 1
+  },
+  "sourceHashes": {
+    "modFolderTree.bas": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "modOperationPlan.bas": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    "modFileOperations.bas": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    "modRecycleBin.bas": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+    "modWorkbookIo.bas": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE"
+  },
+  "builderSha256": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+  "testCandidate": {
+    "candidateSha256": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "buildReceiptSha256": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+    "gateReceiptSha256": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+    "requiredCasesPassed": 68
+  },
+  "releaseCandidate": {
+    "candidateSha256": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
+    "buildReceiptSha256": "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE",
+    "entrypointGatePassed": true,
+    "offlinePackagePassed": true
+  },
+  "releaseSafetySubset": {
+    "status": "pass",
+    "checks": {
+      "rootBoundary": "pass",
+      "reparseBoundary": "pass",
+      "collision": "pass",
+      "recycleBinUnavailableFallback": "static-source-review-only"
+    },
+    "receiptSha256": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+  },
+  "knownLimitations": [
+    {
+      "summary": "実Recycle BinのShell ExtendedProperty latencyは少数項目の実測に限定されます。",
+      "waiverReceiptSha256": "CF3CC8B3D32D063FBCB3ED7BD594EE3C68F5429B34BF2A11BA96523529B494C8"
+    },
+    {
+      "summary": "削除件数1,001〜10,000件の所要時間は「見積不能」として扱い、保証しません。",
+      "waiverReceiptSha256": "CF3CC8B3D32D063FBCB3ED7BD594EE3C68F5429B34BF2A11BA96523529B494C8"
+    }
+  ]
+}

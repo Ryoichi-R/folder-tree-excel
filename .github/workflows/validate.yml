@@ -1,0 +1,163 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  powershell-ast:
+    name: PowerShell AST parse
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse all .ps1 files
+        run: |
+          $failed = $false
+          Get-ChildItem -Path . -Filter '*.ps1' -Recurse -File | ForEach-Object {
+            $tokens = $null; $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) {
+              $script:failed = $true
+              Write-Host "PARSE ERROR: $($_.FullName)" -ForegroundColor Red
+              foreach ($e in $errors) { Write-Host "  $($e.Message) at line $($e.Extent.StartLineNumber)" -ForegroundColor Red }
+            }
+          }
+          if ($failed) { exit 1 }
+
+  publication-policy:
+    name: Publication policy / classification / private marker scan
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run Test-PublicationCandidate.ps1
+        run: pwsh -NoProfile -File scripts/Test-PublicationCandidate.ps1
+      - name: Pester (publication-policy.json contract)
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/publication-contract.Tests.ps1'
+          $config.Filter.Tag = 'PublicationPolicy'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+      - name: Private marker scan
+        run: |
+          $patterns = 'workspace-control', 'C:\\drive', 'C:\\Users\\[A-Za-z]', 'implementation-backup'
+          # このstep自身（.github/workflows/validate.yml）はpattern文字列そのものを
+          # ソース上に含むため、自己参照の誤検出を避けるためscan対象から除外する。
+          # .build-work/.test-work/.release-evidence/distはpublication-policy.jsonの
+          # excludedPatternsと同じ生成物ディレクトリであり、gitignore対象で実checkoutには
+          # 含まれないが、ローカル検証時の紛れを避けるためここでも明示的に除外する。
+          $excludedDirPattern = '\\(\.git|\.build-work|\.test-work|\.release-evidence|dist)\\'
+          $targets = Get-ChildItem -Path . -Recurse -File |
+            Where-Object {
+              $_.FullName -notmatch $excludedDirPattern -and
+              $_.FullName -notmatch '\\\.github\\workflows\\validate\.yml$'
+            }
+          $hit = $false
+          foreach ($file in $targets) {
+            $text = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction SilentlyContinue
+            if ($null -eq $text) { continue }
+            foreach ($p in $patterns) {
+              if ($text -match $p) {
+                Write-Host "PRIVATE MARKER: $($file.FullName) matches /$p/" -ForegroundColor Red
+                $hit = $true
+              }
+            }
+          }
+          if ($hit) { exit 1 }
+
+  vba-source-contract:
+    name: VBA source byte contract / entrypoint inventory
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pester (VBA source byte contract + entrypoint inventory)
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/publication-contract.Tests.ps1'
+          $config.Filter.Tag = 'VbaSourceContract'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+  manifest-schema-consistency:
+    name: VERSION / manifest schema consistency
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pester (VERSION / CHANGELOG / release-manifest.schema.json / release safety subset contract)
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/publication-contract.Tests.ps1'
+          $config.Filter.Tag = 'ManifestSchema'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+  path-guard-unit:
+    name: Path guard unit tests (root-escape, reparse, existing-dir, root identity)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pester (build-xlsm.ps1 OutputPath guard)
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/build-script-path-guard.Tests.ps1'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+  release-safety-subset-contract:
+    name: Release safety subset aggregation (fail-closed) contract
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Pester (Invoke-ReleaseSafetySubset.ps1 aggregation + fixture resilience)
+        run: |
+          Import-Module Pester -MinimumVersion 5.0.0
+          $config = New-PesterConfiguration
+          $config.Run.Path = 'tests/release-safety-subset-aggregation.Tests.ps1'
+          $config.Run.Exit = $true
+          $config.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $config
+
+  secret-scan:
+    name: Committed secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Scan for common secret patterns
+        run: |
+          set -euo pipefail
+          if grep -RInE '(AKIA[0-9A-Z]{16}|-----BEGIN (RSA|OPENSSH|PGP) PRIVATE KEY-----)' --exclude-dir=.git .; then
+            echo "Potential secret material found." >&2
+            exit 1
+          fi
