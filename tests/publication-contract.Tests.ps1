@@ -28,6 +28,16 @@ Describe 'publication-policy.json' -Tag 'PublicationPolicy' {
         $output = & pwsh -NoProfile -File (Join-Path $Root 'scripts\Test-PublicationCandidate.ps1') 2>&1
         $LASTEXITCODE | Should -Be 0 -Because ($output -join "`n")
     }
+
+    It 'runs the Linux committed-secret scan with bash despite the workflow pwsh default' {
+        $workflow = Get-Content -LiteralPath (Join-Path $Root '.github\workflows\validate.yml') -Raw -Encoding UTF8
+        $secretScanStep = [regex]::Match(
+            $workflow,
+            '(?ms)^\s{6}- name: Scan for common secret patterns\s*\r?\n(?<body>.*?)(?=^\s{6}- name:|^\s{2}\S|\z)'
+        )
+        $secretScanStep.Success | Should -BeTrue
+        $secretScanStep.Groups['body'].Value | Should -Match '(?m)^\s{8}shell: bash\s*$'
+    }
 }
 
 Describe 'VBA source byte contract' -Tag 'VbaSourceContract' {

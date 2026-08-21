@@ -47,7 +47,8 @@ foreach ($entry in $policy.files) {
 
 # 2. 実際のtreeをスキャンし、excluded配下を除いた全fileがpolicyに列挙されているか
 $allFiles = @(Get-ChildItem -Path $root -Recurse -File -Force |
-    ForEach-Object { [IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/') })
+    ForEach-Object { [IO.Path]::GetRelativePath($root, $_.FullName).Replace('\', '/') } |
+    Where-Object { $_ -ne '.git' -and -not $_.StartsWith('.git/', [StringComparison]::Ordinal) })
 
 foreach ($relPath in $allFiles) {
     $isExcluded = $false

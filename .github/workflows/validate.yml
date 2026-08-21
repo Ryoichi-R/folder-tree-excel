@@ -155,6 +155,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: Scan for common secret patterns
+        shell: bash
         run: |
           set -euo pipefail
           if grep -RInE '(AKIA[0-9A-Z]{16}|-----BEGIN (RSA|OPENSSH|PGP) PRIVATE KEY-----)' --exclude-dir=.git .; then
