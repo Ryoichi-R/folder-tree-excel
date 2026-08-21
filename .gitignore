@@ -1,0 +1,8 @@
+# Generated build/test artifacts — never part of public source or a release asset.
+/dist/
+/.build-work/
+/.test-work/
+/.release-evidence/
+*.xlsm
+*.build-receipt.json
+*.gate.json

@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.1",
+  "moduleCount": 5,
+  "conditionalCompilationConstant": "TEST_BUILD",
+  "profiles": ["Test", "Release"],
+  "modules": {
+    "modFolderTree": {
+      "productionEntrypoints": [
+        "SelectRootFolder", "BuildTree", "RunScan", "SetScanBlockedByOperation",
+        "RefreshTreeAfterOperations", "IsScanReadyForRoot", "GetScanSnapshotCount",
+        "GetScanSnapshotRow", "ExpandAllLevels", "CollapseToLevel2"
+      ],
+      "productionAccessors": [],
+      "testWrappers": [
+        { "name": "RunScanTest", "coverage": { "type": "case", "caseIds": ["9", "10", "12", "13", "14", "15", "16", "17"] } },
+        { "name": "ClassifyFindResult", "coverage": { "type": "case", "caseIds": ["9"] } },
+        { "name": "ProbeReentry", "coverage": { "type": "case", "caseIds": ["21"] } },
+        { "name": "RunStringSafetyProbe", "coverage": { "type": "case", "caseIds": ["6"] } }
+      ]
+    },
+    "modOperationPlan": {
+      "productionEntrypoints": [
+        "OperationDraftCreated", "OperationIsBusy", "PrepareOperationSheet", "RecreateOperationSheet",
+        "SetOperationSequencePreview", "PreviewOperationPlan", "ExecuteOperationPlan",
+        "GetOperationPlanCount", "GetOperationPlanItem", "GetOperationPlanRoot",
+        "GetOperationPlanBatchId", "RecheckApprovedPlan", "MarkOperationPlanRow"
+      ],
+      "productionAccessors": [],
+      "testWrappers": [
+        { "name": "RunOperationPlanTest", "coverage": { "type": "case", "caseIds": ["22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "46", "47", "48", "52", "53", "55", "56", "64", "67", "68"] } },
+        { "name": "GetOperationConfirmationTextTest", "coverage": { "type": "case", "caseIds": ["55"] } },
+        { "name": "ProbeOperationReentryTest", "coverage": { "type": "case", "caseIds": ["51"] } },
+        { "name": "ExecuteOperationPlanTest", "coverage": { "type": "case", "caseIds": ["26", "34", "35", "39", "41", "42", "44", "47", "48", "52", "53", "55", "56", "67", "68"] } },
+        { "name": "CheckReservedTemporaryNamesTest", "coverage": { "type": "case", "caseIds": ["49", "66"] } }
+      ]
+    },
+    "modFileOperations": {
+      "productionEntrypoints": ["ExecuteFileOperations"],
+      "productionAccessors": [],
+      "testWrappers": [
+        { "name": "ClassifyDeleteFailureResultTest", "coverage": { "type": "case", "caseIds": ["50", "63"] } }
+      ]
+    },
+    "modRecycleBin": {
+      "productionEntrypoints": [
+        "GetOperationAttributes", "ToExtendedOperationPath", "VerifyOperationSnapshot",
+        "CanRecycleOperation", "RecyclePath", "HasReparseAncestor", "IsOperationFolderEmpty",
+        "RecycleItemsPhase"
+      ],
+      "productionAccessors": ["GetRecycleBatchWarning", "ResetRecycleBatchWarning", "GetRecycleSnapshotInfo"],
+      "testWrappers": [
+        { "name": "CanRecycleOperationTest", "coverage": { "type": "case", "caseIds": ["61"] } },
+        { "name": "ResetRecyclePerformanceCounters", "coverage": { "type": "controlled-invocation", "invokedBy": ["scripts/measure-recycle-performance.ps1", "scripts/measure-folder-group-performance.ps1"] } },
+        { "name": "GetRecyclePerformanceCounters", "coverage": { "type": "controlled-invocation", "invokedBy": ["scripts/measure-recycle-performance.ps1", "scripts/measure-folder-group-performance.ps1"] } },
+        { "name": "RecycleSnapshotPerformanceTest", "coverage": { "type": "controlled-invocation", "invokedBy": ["scripts/measure-recycle-performance.ps1", "scripts/measure-folder-group-performance.ps1"] } },
+        { "name": "RecycleSyntheticSnapshotPerformanceTest", "coverage": { "type": "controlled-invocation", "invokedBy": ["scripts/measure-recycle-performance.ps1"] } },
+        { "name": "RecycleCapacityBoundaryTest", "coverage": { "type": "controlled-invocation", "invokedBy": ["scripts/measure-recycle-performance.ps1"] } },
+        { "name": "RecycleDirectoryFilesPerformanceTest", "coverage": { "type": "case", "caseIds": ["65"] } }
+      ]
+    },
+    "modWorkbookIo": {
+      "productionEntrypoints": [
+        "WorkbookIoCreateOperationDraft", "WorkbookIoSetSequencePreview", "WorkbookIoSetOperationState",
+        "WorkbookIoWriteOperationStatus", "AppendExecutionLog"
+      ],
+      "productionAccessors": [],
+      "testWrappers": [
+        { "name": "WorkbookIoCreateOperationDraftTest", "coverage": { "type": "case", "caseIds": ["65"] } },
+        { "name": "WorkbookIoSetSequencePreviewTest", "coverage": { "type": "case", "caseIds": ["27", "28", "29", "30", "31"] } },
+        { "name": "WorkbookIoProtectionFailureProbeTest", "coverage": { "type": "case", "caseIds": ["62"] } }
+      ]
+    }
+  }
+}

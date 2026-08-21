@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.1",
+  "note": "全public source fileのexact allowlist。ここに列挙されないfileが候補treeに存在した場合はUNCLASSIFIED_FILEとして拒否する。generatorはfilesystemから推測して追加しない。",
+  "files": [
+    { "path": ".gitattributes", "classification": "public-source", "type": "text", "required": true },
+    { "path": ".github/ISSUE_TEMPLATE/bug_report.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": ".github/dependabot.yml", "classification": "public-source", "type": "text", "required": true },
+    { "path": ".github/workflows/validate.yml", "classification": "public-source", "type": "text", "required": true },
+    { "path": ".gitignore", "classification": "public-source", "type": "text", "required": true },
+    { "path": "CODE_OF_CONDUCT.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": "CHANGELOG.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": "CONTRIBUTING.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": "LICENSE", "classification": "public-source", "type": "text", "required": true },
+    { "path": "README.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": "SECURITY-MODEL.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": "SECURITY.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": "THIRD-PARTY-NOTICES.md", "classification": "public-source", "type": "text", "required": true },
+    { "path": "VERSION", "classification": "public-source", "type": "text", "required": true },
+    { "path": "release/package-diff-allowlist.json", "classification": "public-source", "type": "text", "required": true },
+    { "path": "release/publication-policy.json", "classification": "public-source", "type": "text", "required": true },
+    { "path": "release/release-manifest.schema.json", "classification": "public-source", "type": "text", "required": true },
+    { "path": "release/vba-entrypoint-inventory-policy.json", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/Invoke-ReleaseSafetySubset.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/New-PublicReleaseBundle.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/Test-PublicationCandidate.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/build-xlsm.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/measure-folder-group-performance.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/measure-performance.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/measure-recycle-performance.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/run-release-validation.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "scripts/test-xlsm.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "src/modFileOperations.bas", "classification": "public-source", "type": "text", "required": true },
+    { "path": "src/modFolderTree.bas", "classification": "public-source", "type": "text", "required": true },
+    { "path": "src/modOperationPlan.bas", "classification": "public-source", "type": "text", "required": true },
+    { "path": "src/modRecycleBin.bas", "classification": "public-source", "type": "text", "required": true },
+    { "path": "src/modWorkbookIo.bas", "classification": "public-source", "type": "text", "required": true },
+    { "path": "tests/build-script-path-guard.Tests.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "tests/publication-contract.Tests.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "tests/release-safety-subset-aggregation.Tests.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "tests/fixtures/release-manifest.sample.json", "classification": "public-source", "type": "text", "required": true }
+  ],
+  "releaseAssetPatterns": [
+    { "pattern": "folder-tree-excel-v*.xlsm", "type": "binary", "required": true },
+    { "pattern": "SHA256SUMS.txt", "type": "text", "required": true },
+    { "pattern": "release-manifest.json", "type": "text", "required": true }
+  ],
+  "evidenceOnlyPatterns": [
+    ".release-evidence/**/vba-entrypoint-inventory.json"
+  ],
+  "excludedPatterns": [
+    ".build-work/**",
+    ".test-work/**",
+    ".release-evidence/**",
+    "dist/**"
+  ]
+}
