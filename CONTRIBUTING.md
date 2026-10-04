@@ -25,6 +25,13 @@ pwsh -NoProfile -File scripts/run-release-validation.ps1
 
 `-Profile Release` でも同じ source からビルドできることを確認してください。release candidate は test 専用 procedure を含まないため、production 側のロジックだけで正常にコンパイルされる必要があります。
 
+## 今回の回帰検証
+
+Excel不要の検証は `Invoke-Pester -Path tests/publication-contract.Tests.ps1,tests/release-safety-subset-aggregation.Tests.ps1,tests/vba-hash-contract.Tests.ps1` で実行できます。
+Windowsの必須ケースには、保護を維持した入力（23）、交換・case-only rename・親フォルダの復元（48）、
+削除済み結果の保持と削除成功後の停止（50）、事前確認後のjunction差し替え拒否（63）を含めています。
+実ゴミ箱を使うケースは専用fixtureを復元します。現行ソースの配布前に全ゲートを再実行してください。
+
 ## release safety subset
 
 配布候補に対しては、test 専用 procedure を使わず通常の操作画面（`事前確認`）を経由して、次の3項目の拒否動作を検証します。

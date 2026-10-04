@@ -51,7 +51,18 @@ $sourcePaths = @($sourceNames | ForEach-Object { Join-Path $root ('src\' + $_) }
 foreach ($path in $sourcePaths) { if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "VBA source missing: $path" } }
 
 function Normalize-Relative([string] $path) { return [IO.Path]::GetRelativePath($root, [IO.Path]::GetFullPath($path)) }
-function Text-Hash([string] $text) { return ([BitConverter]::ToString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text.ToLowerInvariant())))).Replace('-','') }
+function Text-Hash([string] $text) {
+    # VBE adjusts identifier casing, but string literals and comments are exact.
+    $tokens = '"(?:[^"\r\n]|"")*"|''[^\r\n]*|(?im)(?<![\w])Rem[ \t]+[^\r\n]*|[A-Za-z_][A-Za-z_0-9]*'
+    $normalized = [regex]::Replace($text, $tokens, {
+        param($match)
+        if ($match.Value.StartsWith('"') -or $match.Value.StartsWith("'", [StringComparison]::Ordinal) -or $match.Value -match '^(?i:Rem)[ \t]') {
+            return $match.Value
+        }
+        return $match.Value.ToLowerInvariant()
+    })
+    return ([BitConverter]::ToString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($normalized)))).Replace('-', '')
+}
 function Normalize-Vba([string] $text) {
     $noAttribute = [regex]::Replace($text, '(?m)^Attribute [^\r\n]*(?:\r?\n|$)', '')
     $noDirective = [regex]::Replace($noAttribute, '(?m)^#Const TEST_BUILD = (True|False)[ \t]*(?:\r?\n|$)', '')
@@ -87,7 +98,7 @@ function Configure-OperationSheet($sheet) {
     $sheet.Range('A8:V8').Font.Bold=$true; $sheet.Range('A8:V8').Interior.Color=(Bgr 220 230 240)
     $sheet.Range('B9:B100008').Validation.Add(3,1,1,'変更なし,名前変更/移動,ファイルをゴミ箱へ,フォルダ作成,空フォルダをゴミ箱へ') | Out-Null
     foreach($col in @('B','E','J','K','L','M','N','O','P','Q','U','V')) { $sheet.Range(($col + ':' + $col)).NumberFormat='@' }
-    foreach($col in @('J','K','L')) { $sheet.Range(($col + ':' + $col)).Locked=$false; $sheet.Range(($col + ':' + $col)).Interior.Color=(Bgr 255 252 230) }
+    foreach($col in @('B','J','K','L')) { $sheet.Range(($col + '9:' + $col + '100008')).Locked=$false; $sheet.Range(($col + '9:' + $col + '100008')).Interior.Color=(Bgr 255 252 230) }
     $sheet.Range('A:V').WrapText=$false; $sheet.Range('A8:V8').AutoFilter(); $sheet.Activate()
     $left=[double]$sheet.Range('A6').Left; $top=[double]$sheet.Range('A6').Top
     Add-Button $sheet $left $top 130 24 'btn_SetOperationSequencePreview' '連番を設定' 'SetOperationSequencePreview'
@@ -109,6 +120,8 @@ function Test-Workbook($workbook,$expectedHashes) {
     foreach($cell in @('C7','C8')) { if ([int]$workbook.Worksheets.Item('設定').Range($cell).Validation.Type -ne 3) { throw "Validation missing at 設定!$cell" } }
     $cfg=$workbook.Worksheets.Item('設定'); $ops=$workbook.Worksheets.Item('変更操作'); $log=$workbook.Worksheets.Item('実行ログ')
     if (-not $ops.ProtectContents -or -not $log.ProtectContents) { throw 'Operation/log sheets are not protected.' }
+    foreach($cell in @('B9','J9','K9','L9')) { if ([bool]$ops.Range($cell).Locked) { throw "Operation input cell is locked: $cell" } }
+    foreach($cell in @('B2','B8','Q9','V9')) { if (-not [bool]$ops.Range($cell).Locked) { throw "Operation metadata cell is unlocked: $cell" } }
     $buttons=@('btn_SelectRootFolder','btn_BuildTree','btn_ExpandAllLevels','btn_CollapseToLevel2','btn_PrepareOperationSheet')
     foreach($name in $buttons){ try{$null=$cfg.Shapes.Item($name)}catch{throw "Missing settings button: $name"} }
     foreach($name in @('btn_SetOperationSequencePreview','btn_PreviewOperationPlan','btn_ExecuteOperationPlan','btn_RecreateOperationSheet')){ try{$null=$ops.Shapes.Item($name)}catch{throw "Missing operation button: $name"} }

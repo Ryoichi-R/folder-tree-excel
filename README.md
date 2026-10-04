@@ -6,6 +6,9 @@ candidate-only build、VBA compile、再オープン、5 moduleのembedded hash�
 
 通常利用では、VBA sourceやPowerShellは不要。Windowsデスクトップ版Excel、マクロ有効化、署名なしが前提。
 
+現行ソースには未リリースの安全性修正が含まれます。過去の実機測定値は修正後の動作保証ではありません。
+配布候補の生成前に、Windowsデスクトップ版Excelで拡張した必須ケースと性能ゲートを再実行してください。
+
 ## 概要
 
 指定したフォルダを読み取り専用の一覧として確認し、利用者が明示的に承認した操作だけを実行する、Windowsデスクトップ版Excel向けのツールです。
@@ -105,9 +108,9 @@ reparse、禁止名、collision、stale状態、編集列formulaを実行前に�
 新規ファイル作成は拒否します。削除境界には固定local volume、volume GUID、`NukeOnDelete`、
 `MaxCapacity`／`RecycleBinSize`、安全margin、phase前後snapshot、元path・種別・size・mtime照合、
 既存項目保持と外部混入検出を実装しています。必須ケース41/42/67/68でworkspace内fixtureを
-実ゴミ箱へ移動し、照合後に元場所へ復元する検証を完了しています。既存の利用者項目は保持します。
+実ゴミ箱へ移動し、照合後に元場所へ復元する検証を完了しています。既存使用量・バッチ合計・安全marginが容量を超える場合は実行前に拒否します。外部操作や設定変更との競合まで保持を保証するものではありません。
 
-名前変更・移動・新規フォルダ作成は、削除開始前の失敗時に逆順rollbackを試みます。ゴミ箱移動後の自動復元は
+名前変更・移動・新規フォルダ作成は、成功したWin32操作を順序付きjournalへ記録し、削除開始前の失敗時に逆順rollbackを試みます。A/B交換の一時退避と再帰作成した親フォルダも対象です。復元時にはfile identityと必要な属性を照合します。ゴミ箱移動後の自動復元は
 保証しないため、削除開始後の結果はatomic successとは表示しません。`実行ログ` はappend-onlyで、成功・失敗・
 未実行、rollback、`possible-permanent-delete`、`recycle-verification-contaminated` を記録します。
 

@@ -199,12 +199,13 @@ function Get-OperationRow {
 
 function Set-OperationRow {
     param($Sheet, [int] $Row, [string] $Kind, [string] $NewName = '', [string] $MoveRelative = '', [string] $FolderRelative = '')
-    $Sheet.Unprotect()
+    foreach ($column in @(2,10,11,12)) {
+        if ([bool]$Sheet.Cells.Item($Row, $column).Locked) { throw "Operation input is locked: row=$Row column=$column" }
+    }
     $Sheet.Cells.Item($Row, 2).Value2 = $Kind
     $Sheet.Cells.Item($Row, 10).Value2 = $NewName
     $Sheet.Cells.Item($Row, 11).Value2 = $MoveRelative
     $Sheet.Cells.Item($Row, 12).Value2 = $FolderRelative
-    $Sheet.Protect()
 }
 
 function Normalize-TestPath {
@@ -512,8 +513,11 @@ try {
     $embedded = [regex]::Replace([regex]::Replace([regex]::Replace([string]$module.CodeModule.Lines(1, $module.CodeModule.CountOfLines), '(?m)^Attribute [^\r\n]*(?:\r?\n|$)', ''), '(?m)^#Const TEST_BUILD = (True|False)[ \t]*(?:\r?\n|$)', ''), '\r\n?|\n', [string][char]10).TrimEnd([char]10)
     $source = [regex]::Replace([regex]::Replace((Get-Content -LiteralPath $SourcePath -Raw -Encoding UTF8), '(?m)^Attribute [^\r\n]*(?:\r?\n|$)', ''), '\r\n?|\n', [string][char]10).TrimEnd([char]10)
     $sha = [Security.Cryptography.SHA256]::Create()
-    $embeddedHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($embedded.ToLowerInvariant())))).Replace('-', '')
-    $sourceHash = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($source.ToLowerInvariant())))).Replace('-', '')
+    $hashAst = [System.Management.Automation.Language.Parser]::ParseFile($buildScript, [ref]$null, [ref]$null)
+    $hashFunction = $hashAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Text-Hash' }, $true)
+    . ([scriptblock]::Create($hashFunction.Extent.Text))
+    $embeddedHash = Text-Hash $embedded
+    $sourceHash = Text-Hash $source
     Assert-Equal 'embedded/source本文hash' $sourceHash $embeddedHash
 
     Start-Case '18' '破損ZIP partのoffline構造検出と無関係fileへの書き込みなし'
@@ -705,6 +709,12 @@ try {
         $ops = $script:V1Workbook.Worksheets.Item('変更操作')
         $log = $script:V1Workbook.Worksheets.Item('実行ログ')
         Assert-Equal '変更操作保護' $true $ops.ProtectContents
+        foreach ($cell in @('B9','J9','K9','L9')) { Assert-Equal "unlocked $cell" $false ([bool]$ops.Range($cell).Locked) }
+        foreach ($cell in @('B2','B8','Q9','V9')) { Assert-Equal "locked $cell" $true ([bool]$ops.Range($cell).Locked) }
+        # Reapply regular protection so COM cannot rely on UserInterfaceOnly.
+        $ops.Unprotect(); $ops.Protect()
+        $ops.Range('B9').Value2 = '変更なし'
+        Assert-Equal 'protected UI input' '変更なし' ([string]$ops.Range('B9').Value2)
         Assert-Equal '実行ログ保護' $true $log.ProtectContents
         foreach ($name in @('btn_SetOperationSequencePreview','btn_PreviewOperationPlan','btn_ExecuteOperationPlan','btn_RecreateOperationSheet')) { $null = $ops.Shapes.Item($name); Assert-Equal ("button $name") $true $true }
     }
@@ -920,6 +930,35 @@ try {
         Assert-Equal 'rollback結果' $true $result.StartsWith('failed-before-delete-rolled-back')
         Assert-Equal '先行renameを元へ復元' $true (Test-Path -LiteralPath (Join-Path $opRoot 'src\a.txt'))
         Assert-Equal '中間destination残留なし' $false (Test-Path -LiteralPath (Join-Path $opRoot 'src\renamed.txt'))
+        # A/B swap completes before a later move fails. Contents must be restored.
+        foreach ($caseOnly in @($false, $true)) {
+            $swapRoot = New-OperationFixture $operationParent ("case48-swap-$caseOnly")
+            $sourceA = Join-Path $swapRoot 'src\a.txt'
+            $sourceB = Join-Path $swapRoot 'src\b.txt'
+            $late = Join-Path $swapRoot 'src\zz-fail.txt'
+            [IO.File]::WriteAllText($late, 'late')
+            $beforeA = (Get-FileHash $sourceA).Hash
+            $beforeB = (Get-FileHash $sourceB).Hash
+            $ops = Prepare-OperationDraft $script:V1Excel $script:V1Workbook $swapRoot
+            Set-OperationRow $ops (Get-OperationRow $ops $sourceA) '名前変更/移動' $(if ($caseOnly) { 'A.txt' } else { 'b.txt' })
+            if (-not $caseOnly) { Set-OperationRow $ops (Get-OperationRow $ops $sourceB) '名前変更/移動' 'a.txt' }
+            Set-OperationRow $ops (Get-OperationRow $ops $late) '名前変更/移動' 'zz-fail.txt' 'missing-parent'
+            # Also ensure recursively created parent directories are journalled.
+            $ops.Unprotect()
+            $newRow = $ops.Cells($ops.Rows.Count, 1).End(-4162).Row + 1
+            $ops.Cells($newRow, 1).Value2 = 'new'
+            $ops.Cells($newRow, 2).Value2 = 'フォルダ作成'
+            $ops.Cells($newRow, 12).Value2 = 'new\nested'
+            $ops.Protect()
+            Assert-OperationPlanPass $script:V1Excel | Out-Null
+            $result = [string]$script:V1Excel.Run('ExecuteOperationPlanTest')
+            Assert-Equal 'swap rollback result' $true $result.StartsWith('failed-before-delete-rolled-back')
+            Assert-Equal 'restored A contents' $beforeA ((Get-FileHash $sourceA).Hash)
+            Assert-Equal 'restored B contents' $beforeB ((Get-FileHash $sourceB).Hash)
+            Assert-Equal 'restored A spelling' 'a.txt' ((Get-Item -LiteralPath $sourceA).Name)
+            Assert-Equal 'created parents removed' $false (Test-Path (Join-Path $swapRoot 'new'))
+            Assert-Equal 'temporary files removed' 0 @(Get-ChildItem $swapRoot -Filter '.folder-tree-v1_1-tmp-*' -Force).Count
+        }
     }
     Invoke-OperationCase '49' '残留一時名のjournal復元表と元path衝突' {
         $opRoot = New-OperationFixture $operationParent 'case49'
@@ -940,6 +979,39 @@ try {
         Assert-Equal 'API開始後partial' 'partial-after-delete' ([string]$script:V1Excel.Run('ClassifyDeleteFailureResultTest', $true, '通常'))
         Assert-Equal '永久削除疑い優先' 'possible-permanent-delete' ([string]$script:V1Excel.Run('ClassifyDeleteFailureResultTest', $true, 'possible-permanent-delete'))
         Assert-Equal 'API前失敗' 'failed-before-delete' ([string]$script:V1Excel.Run('ClassifyDeleteFailureResultTest', $false, '通常'))
+        $stateRoot = New-OperationFixture $operationParent 'case50-state'
+        [IO.File]::WriteAllText((Join-Path $stateRoot 'src\c.txt'), 'third')
+        $ops = Prepare-OperationDraft $script:V1Excel $script:V1Workbook $stateRoot
+        $rows = @('a.txt','b.txt','c.txt') | ForEach-Object { Get-OperationRow $ops (Join-Path $stateRoot "src\$_") }
+        foreach ($row in $rows) { Set-OperationRow $ops $row 'ファイルをゴミ箱へ' }
+        Assert-OperationPlanPass $script:V1Excel | Out-Null
+        $null = $script:V1Excel.Run('MarkUnexecutedRecycleTest')
+        Assert-Equal 'retain success' '成功' ([string]$ops.Cells($rows[0],14).Value2)
+        Assert-Equal 'retain safety error' 'possible-permanent-delete' ([string]$ops.Cells($rows[1],14).Value2)
+        Assert-Equal 'mark only pending' '未実行' ([string]$ops.Cells($rows[2],14).Value2)
+
+        # Real deletion succeeds, then the folder phase refuses a now non-empty folder.
+        $phaseRoot = New-OperationFixture $operationParent 'case50-phase'
+        $deleted = Join-Path $phaseRoot 'src\a.txt'
+        $moved = Join-Path $phaseRoot 'src\b.txt'
+        $empty = Join-Path $phaseRoot 'empty'
+        $null = New-Item -ItemType Directory -Path $empty -Force
+        try {
+            $ops = Prepare-OperationDraft $script:V1Excel $script:V1Workbook $phaseRoot
+            $deleteRow = Get-OperationRow $ops $deleted
+            Set-OperationRow $ops $deleteRow 'ファイルをゴミ箱へ'
+            Set-OperationRow $ops (Get-OperationRow $ops $moved) '名前変更/移動' 'b.txt' 'empty'
+            Set-OperationRow $ops (Get-OperationRow $ops $empty) '空フォルダをゴミ箱へ'
+            Assert-OperationPlanPass $script:V1Excel | Out-Null
+            $result = [string]$script:V1Excel.Run('ExecuteOperationPlanTest')
+            Assert-Equal 'delete already started' $true $result.StartsWith('partial-after-delete')
+            Assert-Equal 'do not roll back after deletion' $true (Test-Path (Join-Path $empty 'b.txt'))
+            Assert-Equal 'retain deleted row success' '成功' ([string]$ops.Cells($deleteRow,14).Value2)
+            Assert-Equal 'deleted source absent' $false (Test-Path $deleted)
+        } finally {
+            if (-not (Test-Path $deleted) -and $null -ne (Get-RecycleItemInfo $deleted)) { [void](Restore-RecycleItemBySource $deleted) }
+            Assert-Equal 'phase fixture restored from bin' $true (Test-Path $deleted)
+        }
     }
     Invoke-OperationCase '51' '再入拒否とscan/operation相互排他' {
         $opRoot = New-OperationFixture $operationParent 'case51'
@@ -1061,6 +1133,24 @@ try {
         Assert-Equal '書込み停止' $before ([string]$ops.Range('B5').Value2)
     }
     Invoke-OperationCase '63' 'delete phase直前空再確認と分類' {
+        foreach ($kind in @('名前変更/移動','フォルダ作成')) {
+            $guardRoot = New-OperationFixture $operationParent ("case63-guard-" + [guid]::NewGuid().ToString('N'))
+            $outside = Join-Path $operationParent ([guid]::NewGuid().ToString('N'))
+            $null = New-Item -ItemType Directory -Path $outside
+            $destination = Join-Path $guardRoot 'dst'
+            $ops = Prepare-OperationDraft $script:V1Excel $script:V1Workbook $guardRoot
+            $row = Get-OperationRow $ops (Join-Path $guardRoot 'src\a.txt')
+            Set-OperationRow $ops $row $kind 'a.txt' 'dst' 'dst\new'
+            Assert-OperationPlanPass $script:V1Excel | Out-Null
+            Remove-Item -LiteralPath $destination
+            $null = New-Item -ItemType Junction -Path $destination -Target $outside
+            try {
+                $result = [string]$script:V1Excel.Run('ExecuteOperationPlanTest')
+                Assert-Equal 'post-approval junction rejected' $true $result.StartsWith('stale|')
+                Assert-Equal 'outside unchanged' 0 @(Get-ChildItem $outside -Force).Count
+                Assert-Equal 'source unchanged' $true (Test-Path (Join-Path $guardRoot 'src\a.txt'))
+            } finally { [IO.Directory]::Delete($destination) }
+        }
         $opRoot = New-OperationFixture $operationParent 'case63'
         $empty = Join-Path $opRoot 'empty'
         $null = New-Item -ItemType Directory -Path $empty -Force

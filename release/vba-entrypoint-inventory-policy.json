@@ -24,7 +24,7 @@
         "OperationDraftCreated", "OperationIsBusy", "PrepareOperationSheet", "RecreateOperationSheet",
         "SetOperationSequencePreview", "PreviewOperationPlan", "ExecuteOperationPlan",
         "GetOperationPlanCount", "GetOperationPlanItem", "GetOperationPlanRoot",
-        "GetOperationPlanBatchId", "RecheckApprovedPlan", "MarkOperationPlanRow"
+        "GetOperationPlanBatchId", "RecheckApprovedPlan", "MarkOperationPlanRow", "VerifyOperationBoundary"
       ],
       "productionAccessors": [],
       "testWrappers": [
@@ -39,12 +39,13 @@
       "productionEntrypoints": ["ExecuteFileOperations"],
       "productionAccessors": [],
       "testWrappers": [
-        { "name": "ClassifyDeleteFailureResultTest", "coverage": { "type": "case", "caseIds": ["50", "63"] } }
+        { "name": "ClassifyDeleteFailureResultTest", "coverage": { "type": "case", "caseIds": ["50", "63"] } },
+        { "name": "MarkUnexecutedRecycleTest", "coverage": { "type": "case", "caseIds": ["50"] } }
       ]
     },
     "modRecycleBin": {
       "productionEntrypoints": [
-        "GetOperationAttributes", "ToExtendedOperationPath", "VerifyOperationSnapshot",
+        "GetOperationAttributes", "GetOperationIdentity", "ToExtendedOperationPath", "VerifyOperationSnapshot",
         "CanRecycleOperation", "RecyclePath", "HasReparseAncestor", "IsOperationFolderEmpty",
         "RecycleItemsPhase"
       ],

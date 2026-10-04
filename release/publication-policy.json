@@ -36,6 +36,7 @@
     { "path": "src/modRecycleBin.bas", "classification": "public-source", "type": "text", "required": true },
     { "path": "src/modWorkbookIo.bas", "classification": "public-source", "type": "text", "required": true },
     { "path": "tests/build-script-path-guard.Tests.ps1", "classification": "public-source", "type": "text", "required": true },
+    { "path": "tests/vba-hash-contract.Tests.ps1", "classification": "public-source", "type": "text", "required": true },
     { "path": "tests/publication-contract.Tests.ps1", "classification": "public-source", "type": "text", "required": true },
     { "path": "tests/release-safety-subset-aggregation.Tests.ps1", "classification": "public-source", "type": "text", "required": true },
     { "path": "tests/fixtures/release-manifest.sample.json", "classification": "public-source", "type": "text", "required": true }

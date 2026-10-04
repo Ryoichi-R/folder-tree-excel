@@ -52,6 +52,22 @@ Private Type SHQUERYRBINFO
 End Type
 #End If
 
+Private Type OperationFileInfo
+    Attributes As Long
+    CreationLow As Long
+    CreationHigh As Long
+    AccessLow As Long
+    AccessHigh As Long
+    WriteLow As Long
+    WriteHigh As Long
+    VolumeSerial As Long
+    SizeHigh As Long
+    SizeLow As Long
+    Links As Long
+    IndexHigh As Long
+    IndexLow As Long
+End Type
+
 Private Type RecycleVolumeConfig
     VolumePath As String
     VolumeGuid As String
@@ -64,6 +80,10 @@ Private Type RecycleVolumeConfig
 End Type
 
 #If VBA7 Then
+    Private Declare PtrSafe Function CreateFileW Lib "kernel32" (ByVal path As LongPtr, ByVal access As Long, ByVal share As Long, ByVal security As LongPtr, ByVal disposition As Long, ByVal flags As Long, ByVal template As LongPtr) As LongPtr
+    Private Declare PtrSafe Function GetFileInformationByHandle Lib "kernel32" (ByVal handle As LongPtr, ByRef info As OperationFileInfo) As Long
+    Private Declare PtrSafe Function GetLastError Lib "kernel32" () As Long
+    Private Declare PtrSafe Function CloseHandle Lib "kernel32" (ByVal handle As LongPtr) As Long
     Private Declare PtrSafe Function SHFileOperationW Lib "shell32" (ByRef lpFileOp As SHFILEOPSTRUCTW) As Long
     Private Declare PtrSafe Function SHQueryRecycleBinW Lib "shell32" (ByVal pszRootPath As LongPtr, ByRef pSHQueryRBInfo As SHQUERYRBINFO) As Long
     Private Declare PtrSafe Function GetDriveTypeW Lib "kernel32" (ByVal lpRootPathName As LongPtr) As Long
@@ -72,6 +92,10 @@ End Type
     Private Declare PtrSafe Function GetVolumeNameForVolumeMountPointW Lib "kernel32" (ByVal lpszVolumeMountPoint As LongPtr, ByVal lpszVolumeName As LongPtr, ByVal cchBufferLength As Long) As Long
     Private Declare PtrSafe Function GetDiskFreeSpaceExW Lib "kernel32" (ByVal lpDirectoryName As LongPtr, ByRef lpFreeBytesAvailableToCaller As Currency, ByRef lpTotalNumberOfBytes As Currency, ByRef lpTotalNumberOfFreeBytes As Currency) As Long
 #Else
+    Private Declare Function CreateFileW Lib "kernel32" (ByVal path As Long, ByVal access As Long, ByVal share As Long, ByVal security As Long, ByVal disposition As Long, ByVal flags As Long, ByVal template As Long) As Long
+    Private Declare Function GetFileInformationByHandle Lib "kernel32" (ByVal handle As Long, ByRef info As OperationFileInfo) As Long
+    Private Declare Function GetLastError Lib "kernel32" () As Long
+    Private Declare Function CloseHandle Lib "kernel32" (ByVal handle As Long) As Long
     Private Declare Function SHFileOperationW Lib "shell32" (ByRef lpFileOp As SHFILEOPSTRUCTW) As Long
     Private Declare Function SHQueryRecycleBinW Lib "shell32" (ByVal pszRootPath As Long, ByRef pSHQueryRBInfo As SHQUERYRBINFO) As Long
     Private Declare Function GetDriveTypeW Lib "kernel32" (ByVal lpRootPathName As Long) As Long
@@ -85,6 +109,25 @@ Private mRecycleLastWarning As String
 Private mRecycleLastSnapshotInfo As String
 Private mRecycleSnapshotCalls As Long
 Private mRecycleExtendedPropertyCalls As Long
+
+Public Function GetOperationIdentity(ByVal path As String) As String
+    Dim apiPath As String, info As OperationFileInfo
+    #If VBA7 Then
+        Dim handle As LongPtr
+    #Else
+        Dim handle As Long
+    #End If
+    apiPath = ToExtendedOperationPath(path)
+    ' OPEN_EXISTING, BACKUP_SEMANTICS, OPEN_REPARSE_POINT; no write access.
+    handle = CreateFileW(StrPtr(apiPath), 0, 7, 0, 3, &H2200000, 0)
+    If handle = -1 Then Exit Function
+    If GetFileInformationByHandle(handle, info) <> 0 Then
+        If (info.Attributes And FILE_ATTRIBUTE_REPARSE_POINT) = 0 And (info.IndexHigh <> 0 Or info.IndexLow <> 0) Then
+            GetOperationIdentity = Hex$(info.VolumeSerial) & ":" & Hex$(info.IndexHigh) & ":" & Hex$(info.IndexLow)
+        End If
+    End If
+    CloseHandle handle
+End Function
 
 Public Function GetOperationAttributes(ByVal path As String) As Long
     Dim apiPath As String
@@ -236,7 +279,7 @@ Public Function RecycleCapacityBoundaryTest(ByVal source As String) As String
         RecycleCapacityBoundaryTest = "fail|" & Replace$(message, "|", "/")
         Exit Function
     End If
-    threshold = config.CapacityBytes - config.SafetyMarginBytes
+    threshold = config.CapacityBytes - config.SafetyMarginBytes - config.UsedBytes
     belowPass = IsRecycleItemSizeAllowed(config, threshold - 1#, message)
     equalPass = IsRecycleItemSizeAllowed(config, threshold, message)
     abovePass = IsRecycleItemSizeAllowed(config, threshold + 1#, message)
@@ -244,7 +287,7 @@ Public Function RecycleCapacityBoundaryTest(ByVal source As String) As String
     aggregateSize = config.CapacityBytes - config.UsedBytes + 1#
     If aggregateSize < 1# Then aggregateSize = 1#
     UpdateRecycleBatchCapacityWarning config, aggregateSize
-    aggregateWarning = (Len(mRecycleLastWarning) > 0)
+    aggregateWarning = (Len(mRecycleLastWarning) > 0) And Not IsRecycleBatchSizeAllowed(config, aggregateSize, message)
     If Not belowPass Or Not equalPass Or abovePass Or Not aggregateWarning Then
         RecycleCapacityBoundaryTest = "fail|capacity boundary assertion failed"
         Exit Function
@@ -356,15 +399,18 @@ Public Function RecyclePath(ByVal source As String, ByRef errorNumber As Long, B
 End Function
 
 Public Function HasReparseAncestor(ByVal path As String, ByVal rootPath As String) As Boolean
-    Dim current As String, attrs As Long
+    Dim current As String, attrs As Long, apiPath As String, errorNumber As Long
     current = NormalizeRecyclePath(path)
-    rootPath = NormalizeRecyclePath(rootPath)
+    ' Check above root too: a junction in a root ancestor also redirects operations.
     Do
-        attrs = GetOperationAttributes(current)
-        If attrs <> -1 Then
+        apiPath = ToExtendedOperationPath(current)
+        attrs = GetFileAttributesW(StrPtr(apiPath))
+        If attrs = -1 Then
+            errorNumber = GetLastError()
+            If errorNumber <> 2 And errorNumber <> 3 Then HasReparseAncestor = True: Exit Function
+        Else
             If (attrs And FILE_ATTRIBUTE_REPARSE_POINT) <> 0 Then HasReparseAncestor = True: Exit Function
         End If
-        If StrComp(current, rootPath, vbTextCompare) = 0 Then Exit Do
         current = ParentRecyclePath(current)
         If Len(current) = 0 Then Exit Do
     Loop
@@ -385,24 +431,27 @@ Public Function RecycleItemsPhase(ByRef sources() As String, ByRef itemSizes() A
                                   ByRef itemModified() As Double, ByRef itemIsFolder() As Boolean, _
                                   ByVal itemCount As Long, ByRef itemStates() As String, _
                                   ByRef errorNumber As Long, ByRef errorMessage As String, _
-                                  ByRef safetyState As String, ByRef apiStarted As Boolean) As Boolean
+                                  ByRef safetyState As String, ByRef apiStarted As Boolean, Optional ByVal operationRoot As String = "") As Boolean
     Dim config As RecycleVolumeConfig, i As Long, totalSize As Double
     Dim beforeItems As Object, afterItems As Object, beforeCanonical As String, afterCanonical As String
     Dim fromBuffer As String, op As SHFILEOPSTRUCTW, result As Long
     Dim expected As Object, key As Variant
-    Dim sourceExists As Boolean
+    Dim sourceExists As Boolean, identities() As String
 
     errorNumber = 0: errorMessage = "": safetyState = "通常": apiStarted = False
     mRecycleLastSnapshotInfo = ""
     If itemCount <= 0 Then errorMessage = "削除対象がありません。": Exit Function
+    ReDim identities(1 To itemCount)
     ReDim itemStates(1 To itemCount)
     For i = 1 To itemCount
         itemStates(i) = "未実行"
         totalSize = totalSize + itemSizes(i)
     Next i
     If Not ResolveRecycleVolumeConfig(sources(1), config, errorMessage) Then Exit Function
-    UpdateRecycleBatchCapacityWarning config, totalSize
+    If Not IsRecycleBatchSizeAllowed(config, totalSize, errorMessage) Then Exit Function
     For i = 1 To itemCount
+        identities(i) = GetOperationIdentity(sources(i))
+        If Len(identities(i)) = 0 Then errorMessage = "削除対象のidentityを取得できません。": Exit Function
         If Not SameVolumeGuid(sources(i), config.VolumeGuid, errorMessage) Then Exit Function
         If Len(sources(i)) > RECYCLE_PATH_LIMIT Then errorMessage = "ゴミ箱APIのpath長上限を超えています。": Exit Function
         If itemSizes(i) < 0 Then errorMessage = "対象sizeを解決できません。": Exit Function
@@ -421,6 +470,19 @@ Public Function RecycleItemsPhase(ByRef sources() As String, ByRef itemSizes() A
     Next i
     fromBuffer = fromBuffer & vbNullChar
 
+    For i = 1 To itemCount
+        If Len(operationRoot) > 0 Then
+            If Not VerifyOperationBoundary(sources(i), errorMessage) Then Exit Function
+        Else
+            If HasReparseAncestor(sources(i), sources(i)) Then errorMessage = "削除対象の祖先にreparse pointがあります。": Exit Function
+        End If
+        If GetOperationIdentity(sources(i)) <> identities(i) Then errorMessage = "削除対象のidentityが変化しました。": Exit Function
+        If Not VerifyOperationSnapshot(sources(i), GetOperationAttributes(sources(i)), itemSizes(i), itemModified(i), errorMessage) Then Exit Function
+        If itemIsFolder(i) And Not IsOperationFolderEmpty(sources(i)) Then errorMessage = "削除対象が空フォルダではありません。": Exit Function
+    Next i
+    ' Re-read policy/capacity immediately before the destructive call.
+    If Not ResolveRecycleVolumeConfig(sources(1), config, errorMessage) Then Exit Function
+    If Not IsRecycleBatchSizeAllowed(config, totalSize, errorMessage) Then Exit Function
     op.wFunc = 3
     op.pFrom = StrPtr(fromBuffer)
     op.fFlags = FOF_ALLOWUNDO Or FOF_NOCONFIRMATION Or FOF_NOERRORUI Or FOF_SILENT
@@ -536,17 +598,25 @@ Private Function ResolveRecycleVolumeConfig(ByVal source As String, ByRef config
     config.SafetyMarginBytes = RECYCLE_MARGIN_MIN_BYTES
     If config.TotalBytes * RECYCLE_MARGIN_RATIO > config.SafetyMarginBytes Then config.SafetyMarginBytes = -Int(-(config.TotalBytes * RECYCLE_MARGIN_RATIO))
     If config.CapacityBytes <= config.SafetyMarginBytes Then message = "ゴミ箱容量が安全margin以下です。": Exit Function
-    If config.UsedBytes + config.SafetyMarginBytes > config.CapacityBytes Then config.Warning = "既存使用量が容量上限に近く、自動整理の可能性があります。"
+    If Not IsRecycleBatchSizeAllowed(config, 0, message) Then Exit Function
     ResolveRecycleVolumeConfig = True
 End Function
 
 Private Function IsRecycleItemSizeAllowed(ByRef config As RecycleVolumeConfig, ByVal itemSize As Double, ByRef message As String) As Boolean
     message = ""
     If itemSize < 0 Then message = "対象sizeを解決できません。": Exit Function
-    If itemSize > config.CapacityBytes - config.SafetyMarginBytes Then
+    If Not IsRecycleBatchSizeAllowed(config, itemSize, message) Then
         message = "対象sizeがゴミ箱設定上限から安全marginを引いた値を超えています。": Exit Function
     End If
     IsRecycleItemSizeAllowed = True
+End Function
+
+Private Function IsRecycleBatchSizeAllowed(ByRef config As RecycleVolumeConfig, ByVal batchSize As Double, ByRef message As String) As Boolean
+    If batchSize < 0 Or config.UsedBytes + batchSize + config.SafetyMarginBytes > config.CapacityBytes Then
+        message = "既存使用量と削除予定量が安全margin込みのゴミ箱容量を超えるため拒否します。"
+        Exit Function
+    End If
+    IsRecycleBatchSizeAllowed = True
 End Function
 
 Private Sub UpdateRecycleBatchCapacityWarning(ByRef config As RecycleVolumeConfig, ByVal batchSize As Double)
@@ -749,5 +819,9 @@ End Function
 Private Function ParentRecyclePath(ByVal value As String) As String
     Dim p As Long
     p = InStrRev(value, "\")
-    If p > 0 Then ParentRecyclePath = Left$(value, p - 1)
+    If p = 3 And Mid$(value, 2, 1) = ":" Then
+        If Len(value) > 3 Then ParentRecyclePath = Left$(value, 3)
+    ElseIf p > 0 Then
+        ParentRecyclePath = Left$(value, p - 1)
+    End If
 End Function

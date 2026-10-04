@@ -92,6 +92,7 @@ jobs:
           Import-Module Pester -MinimumVersion 5.0.0
           $config = New-PesterConfiguration
           $config.Run.Path = 'tests/publication-contract.Tests.ps1'
+          $config.Run.Path = @('tests/publication-contract.Tests.ps1', 'tests/vba-hash-contract.Tests.ps1')
           $config.Filter.Tag = 'VbaSourceContract'
           $config.Run.Exit = $true
           $config.Output.Verbosity = 'Detailed'

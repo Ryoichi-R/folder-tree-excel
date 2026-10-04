@@ -287,12 +287,13 @@ try {
             }
             if ($targetRow -lt 0) { throw "[$Id] operation row not found: $sourceFull" }
 
-            $opsSheet.Unprotect()
+            foreach ($column in @(2,10,11,12)) {
+                if ([bool]$opsSheet.Cells.Item($targetRow, $column).Locked) { throw "Operation input is locked: column=$column" }
+            }
             $opsSheet.Cells.Item($targetRow, 2).Value2 = '名前変更/移動'
             $opsSheet.Cells.Item($targetRow, 10).Value2 = $NewName
             $opsSheet.Cells.Item($targetRow, 11).Value2 = $MoveRelative
             $opsSheet.Cells.Item($targetRow, 12).Value2 = ''
-            $opsSheet.Protect()
 
             $sequence = @(@{ Title = $expectRejectTitle; ButtonId = $IDOK })
             $watchJob = Start-ThreadJob -ScriptBlock $watcherScript -ArgumentList $excelPid, $sequence, $DialogTimeoutSeconds

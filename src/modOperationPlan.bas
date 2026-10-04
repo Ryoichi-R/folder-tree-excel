@@ -23,6 +23,8 @@ Public Type OperationPlanItem
     SourceAttributes As Long
     SourceReparse As Boolean
     SourceFingerprint As String
+    SourceIdentity As String
+    ExecutionState As String
     TemporarySource As String
     TemporaryNonce As String
     IsDelete As Boolean
@@ -32,6 +34,7 @@ End Type
 Private mPlan() As OperationPlanItem
 Private mPlanCount As Long
 Private mPlanRoot As String
+Private mPlanRootIdentity As String
 Private mPlanBatchId As String
 Private mPlanNonce As String
 Private mPlanFingerprint As String
@@ -47,6 +50,7 @@ Public Sub OperationDraftCreated(ByVal rootPath As String)
     mPlanRoot = NormalizeOperationPath(rootPath)
     mPlanBatchId = ""
     mPlanNonce = ""
+    mPlanRootIdentity = ""
     mPlanFingerprint = ""
     mDraftFingerprint = ""
     mPlanApproved = False
@@ -112,6 +116,7 @@ Public Sub PreviewOperationPlan()
     End If
 
     Dim message As String
+    mPlanApproved = False
     If Not BuildOperationPlan(message) Then
         WorkbookIoSetOperationState "検査失敗"
         MsgBox message, vbExclamation, "事前確認で停止しました"
@@ -218,8 +223,13 @@ Public Sub ExecuteOperationPlan()
     Dim resultText As String
     ExecuteApprovedPlanCore resultText
     mPlanApproved = False
-    WorkbookIoSetOperationState "実行完了"
-    MsgBox resultText, vbInformation, "変更操作"
+    If Left$(resultText, 8) = "success:" Then
+        WorkbookIoSetOperationState "実行完了"
+        MsgBox resultText, vbInformation, "変更操作"
+    Else
+        WorkbookIoSetOperationState "停止（実行ログを確認）"
+        MsgBox resultText, vbExclamation, "変更操作"
+    End If
     Exit Sub
 Fail:
     mOperationBusy = False
@@ -249,6 +259,8 @@ Private Sub ExecuteApprovedPlanCore(ByRef resultText As String)
     Application.EnableCancelKey = xlErrorHandler
     Application.Cursor = xlWait
     Application.StatusBar = "ファイル操作を実行しています..."
+    Dim recheckMessage As String
+    If Not RecheckApprovedPlan(recheckMessage) Then Err.Raise vbObjectError + 1103, "ExecuteApprovedPlanCore", recheckMessage
     resultText = ExecuteFileOperations(mPlan, mPlanCount, mPlanBatchId, mPlanRoot)
     mOperationBusy = False
     SetScanBlockedByOperation False
@@ -293,7 +305,8 @@ Private Function BuildOperationPlan(ByRef resultMessage As String) As Boolean
     mPlanCount = 0
     Erase mPlan
     mPlanRoot = NormalizeOperationPath(CStr(ws.Range("B2").Value2))
-    If Len(mPlanRoot) = 0 Or Not IsScanReadyForRoot(mPlanRoot) Then
+    mPlanRootIdentity = GetOperationIdentity(mPlanRoot)
+    If Len(mPlanRoot) = 0 Or Len(mPlanRootIdentity) = 0 Or HasReparseAncestor(mPlanRoot, mPlanRoot) Or Not IsScanReadyForRoot(mPlanRoot) Then
         resultMessage = "一覧のrootが最新の正常走査rootと一致しません。"
         Exit Function
     End If
@@ -368,6 +381,7 @@ NextRow:
         BuildOperationPlan = False
         Exit Function
     End If
+    If Not ValidateRecyclePlanCapacity(resultMessage) Then Exit Function
     If Len(GetRecycleBatchWarning()) > 0 Then warningCount = warningCount + 1
     resultMessage = BuildPlanSummary(errorCount, warningCount)
     If Len(GetRecycleBatchWarning()) > 0 Then resultMessage = resultMessage & vbCrLf & "警告: " & GetRecycleBatchWarning()
@@ -392,6 +406,8 @@ Private Function ValidateOperationItem(ByVal ws As Worksheet, ByVal rowNumber As
     item.SourceAttributes = 0
     item.SourceReparse = False
     item.SourceFingerprint = ""
+    item.SourceIdentity = ""
+    item.ExecutionState = "未実行"
     item.TemporarySource = ""
     item.TemporaryNonce = ""
     item.IsDelete = False
@@ -426,6 +442,9 @@ Private Function ValidateOperationItem(ByVal ws As Worksheet, ByVal rowNumber As
 
     If Not PathExists(source) Then errorMessage = "sourceが存在しません。": Exit Function
     If Not IsInsideOperationRoot(source) Or source = mPlanRoot Then errorMessage = "sourceが走査root境界外です。": Exit Function
+    If HasReparseAncestor(source, mPlanRoot) Then errorMessage = "sourceの祖先にreparse pointがあります。": Exit Function
+    item.SourceIdentity = GetOperationIdentity(source)
+    If Len(item.SourceIdentity) = 0 Then errorMessage = "sourceのfile identityを取得できません。": Exit Function
     If item.SourceReparse Then errorMessage = "reparse pointは操作対象にできません。": Exit Function
     If Not VerifyOperationSnapshot(source, expectedAttrs, expectedSize, expectedModified, errorMessage) Then Exit Function
 
@@ -522,8 +541,11 @@ End Function
 
 Private Function IsInsideOperationRoot(ByVal path As String) As Boolean
     path = NormalizeOperationPath(path)
+    Dim prefix As String
+    prefix = mPlanRoot
+    If Right$(prefix, 1) <> "\" Then prefix = prefix & "\"
     IsInsideOperationRoot = (StrComp(path, mPlanRoot, vbTextCompare) = 0 Or _
-        LCase$(Left$(path, Len(mPlanRoot) + 1)) = LCase$(mPlanRoot & "\"))
+        StrComp(Left$(path, Len(prefix)), prefix, vbTextCompare) = 0)
 End Function
 
 Private Function IsSafeRelativePath(ByVal path As String) As Boolean
@@ -796,12 +818,48 @@ Public Function GetOperationPlanBatchId() As String
     GetOperationPlanBatchId = mPlanBatchId
 End Function
 
+Private Function ValidateRecyclePlanCapacity(ByRef message As String) As Boolean
+    Dim i As Long, totalSize As Double, firstSource As String
+    For i = 1 To mPlanCount
+        If mPlan(i).IsDelete Then
+            If Len(firstSource) = 0 Then firstSource = mPlan(i).Source
+            If Not mPlan(i).IsFolder Then totalSize = totalSize + mPlan(i).SourceSize
+        End If
+    Next i
+    If Len(firstSource) > 0 Then
+        If Not CanRecycleOperation(firstSource, totalSize, message) Then Exit Function
+    End If
+    ValidateRecyclePlanCapacity = True
+End Function
+
+Public Function VerifyOperationBoundary(ByVal path As String, ByRef message As String) As Boolean
+    message = ""
+    If Len(mPlanRootIdentity) = 0 Or GetOperationIdentity(mPlanRoot) <> mPlanRootIdentity Then
+        message = "走査rootのidentityが変化したため停止しました。": Exit Function
+    End If
+    If StrComp(NormalizeOperationPath(path), mPlanRoot, vbTextCompare) = 0 Or Not IsInsideOperationRoot(path) Or HasReparseAncestor(path, mPlanRoot) Then
+        message = "操作pathがroot境界またはreparse境界外です。": Exit Function
+    End If
+    VerifyOperationBoundary = True
+End Function
+
 Public Function RecheckApprovedPlan(ByRef message As String) As Boolean
     Dim i As Long
     message = ""
     If Not mPlanApproved Or mPlanCount = 0 Then message = "事前確認済みの操作案がありません。": Exit Function
     If BuildDraftFingerprint() <> mPlanFingerprint Then message = "事前確認後に操作案が変更されています。": Exit Function
     For i = 1 To mPlanCount
+        If mPlan(i).Kind <> OP_MKDIR Then
+            If Not VerifyOperationBoundary(mPlan(i).Source, message) Then Exit Function
+        End If
+        If mPlan(i).Kind = OP_MKDIR Or mPlan(i).Kind = OP_RENAME_MOVE Then
+            If Not VerifyOperationBoundary(mPlan(i).Destination, message) Then Exit Function
+        End If
+        If mPlan(i).Kind = OP_MKDIR Then
+            If PathExists(mPlan(i).Destination) Then message = "作成先が既に存在します。": Exit Function
+        Else
+            If GetOperationIdentity(mPlan(i).Source) <> mPlan(i).SourceIdentity Then message = "sourceのfile identityが変化しました。": Exit Function
+        End If
         If mPlan(i).Kind <> OP_MKDIR Then
             If Not VerifyOperationSnapshot(mPlan(i).Source, mPlan(i).SourceAttributes, mPlan(i).SourceSize, mPlan(i).SourceModified, message) Then
                 message = "操作直前の再照合で停止しました。" & vbCrLf & message
@@ -815,6 +873,7 @@ Public Function RecheckApprovedPlan(ByRef message As String) As Boolean
             End If
         End If
     Next i
+    If Not ValidateRecyclePlanCapacity(message) Then Exit Function
     RecheckApprovedPlan = True
 End Function
 
