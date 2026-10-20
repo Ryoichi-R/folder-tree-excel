@@ -1,0 +1,9 @@
+# Canonical VBA source is UTF-8, no BOM, LF-only.
+*.bas text eol=lf
+*.md text eol=lf
+*.ps1 text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+
+# Release assets are binary and must never be diffed or re-encoded.
+*.xlsm binary
